@@ -36,6 +36,10 @@ const COLORS = [
 
 const KPI_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#a78bfa", "#f472b6", "#22d3ee"];
 
+function labelize(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "-";
   if (typeof value === "number") {
@@ -69,7 +73,7 @@ function CustomTooltip({
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded-lg border border-white/10 bg-[#11151b] p-3 shadow-2xl">
+    <div className="rounded-2xl border border-white/10 bg-[#11151b] p-3 shadow-2xl">
       {label && <p className="mb-2 text-xs font-medium text-slate-400">{label}</p>}
       {payload.map((item, index) => (
         <div key={`${item.name}-${index}`} className="flex items-center gap-2 text-sm">
@@ -90,15 +94,16 @@ function KpiCard({ data }: { data: Record<string, unknown>[] }) {
   const entries = Object.entries(data[0]).filter(([, value]) => value !== null);
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       {entries.map(([key, value], index) => (
-        <div key={key} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-            {key.replace(/_/g, " ")}
+        <div key={key} className="rounded-2xl border border-white/8 bg-[#22201d] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            {labelize(key)}
           </p>
-          <p className="text-2xl font-bold" style={{ color: KPI_COLORS[index % KPI_COLORS.length] }}>
+          <p className="text-3xl font-semibold text-white" style={{ color: KPI_COLORS[index % KPI_COLORS.length] }}>
             {formatValue(value)}
           </p>
+          <p className="mt-2 text-xs text-slate-500">Live metric from query result</p>
         </div>
       ))}
     </div>
@@ -126,7 +131,7 @@ function LineChartComponent({
   const Chart = isArea ? AreaChart : LineChart;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={320}>
       <Chart data={data} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
         <XAxis
@@ -175,7 +180,7 @@ function BarChartComponent({ data, config }: { data: Record<string, unknown>[]; 
 
   if (isHorizontal) {
     return (
-      <ResponsiveContainer width="100%" height={Math.max(240, data.length * 36)}>
+    <ResponsiveContainer width="100%" height={Math.max(260, data.length * 40)}>
         <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 86, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
           <XAxis
@@ -206,7 +211,7 @@ function BarChartComponent({ data, config }: { data: Record<string, unknown>[]; 
   }
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={320}>
       <BarChart data={data} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
         <XAxis
@@ -247,8 +252,8 @@ function PieChartComponent({
   const total = data.reduce((sum, row) => sum + Number(row[yKey] || 0), 0);
 
   return (
-    <div className="flex flex-wrap items-center gap-4">
-      <ResponsiveContainer width={220} height={220}>
+    <div className="flex flex-wrap items-center gap-5">
+      <ResponsiveContainer width={240} height={240}>
         <PieChart>
           <Pie
             data={data}
@@ -305,7 +310,7 @@ function ScatterChartComponent({ data, config }: { data: Record<string, unknown>
   const { xKey, yKey } = getKeys(data, config);
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={300}>
       <ScatterChart margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
         <XAxis
@@ -340,10 +345,10 @@ function ChartPanel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+    <section className="rounded-2xl border border-white/8 bg-[#22201d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold tracking-wide text-white">{title}</h3>
-        {description && <p className="mt-1 text-xs text-slate-500">{description}</p>}
+        <h3 className="text-xl font-semibold text-white">{title}</h3>
+        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
       </div>
       {children}
     </section>
@@ -403,30 +408,52 @@ export default function ChartRenderer({ response }: { response: QueryResponse })
 
   const kpiCharts = charts.filter((config) => config.type === "kpi");
   const visualCharts = charts.filter((config) => config.type !== "kpi");
+  const heroChart = visualCharts[0];
+  const secondaryCharts = visualCharts.slice(1);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {kpiCharts.length > 0 && (
-        <section>
-          <h3 className="mb-2 text-sm font-semibold tracking-wide text-white">
-            {kpiCharts.length === 1 ? kpiCharts[0].title : "Key Metrics"}
-          </h3>
+        <section className="space-y-3">
+          <div className="flex items-end justify-between gap-4 border-b border-white/8 pb-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Performance Snapshot</p>
+              <h3 className="mt-1 text-3xl font-semibold text-white">
+                {kpiCharts.length === 1 ? kpiCharts[0].title : "Key Metrics"}
+              </h3>
+            </div>
+          </div>
           <KpiCard data={data} />
         </section>
       )}
 
-      {visualCharts.map((config, index) => {
-        return (
-          <ChartPanel key={index} title={config.title} description={config.description}>
-            {config.type === "line" && <LineChartComponent data={data} config={config} />}
-            {config.type === "area" && <LineChartComponent data={data} config={config} isArea />}
-            {config.type === "bar" && <BarChartComponent data={data} config={config} />}
-            {config.type === "pie" && <PieChartComponent data={data} config={config} />}
-            {config.type === "donut" && <PieChartComponent data={data} config={config} isDonut />}
-            {config.type === "scatter" && <ScatterChartComponent data={data} config={config} />}
-          </ChartPanel>
-        );
-      })}
+      {heroChart && (
+        <ChartPanel title={heroChart.title} description={heroChart.description}>
+          {heroChart.type === "line" && <LineChartComponent data={data} config={heroChart} />}
+          {heroChart.type === "area" && <LineChartComponent data={data} config={heroChart} isArea />}
+          {heroChart.type === "bar" && <BarChartComponent data={data} config={heroChart} />}
+          {heroChart.type === "pie" && <PieChartComponent data={data} config={heroChart} />}
+          {heroChart.type === "donut" && <PieChartComponent data={data} config={heroChart} isDonut />}
+          {heroChart.type === "scatter" && <ScatterChartComponent data={data} config={heroChart} />}
+        </ChartPanel>
+      )}
+
+      {secondaryCharts.length > 0 && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {secondaryCharts.map((config, index) => {
+            return (
+              <ChartPanel key={index} title={config.title} description={config.description}>
+                {config.type === "line" && <LineChartComponent data={data} config={config} />}
+                {config.type === "area" && <LineChartComponent data={data} config={config} isArea />}
+                {config.type === "bar" && <BarChartComponent data={data} config={config} />}
+                {config.type === "pie" && <PieChartComponent data={data} config={config} />}
+                {config.type === "donut" && <PieChartComponent data={data} config={config} isDonut />}
+                {config.type === "scatter" && <ScatterChartComponent data={data} config={config} />}
+              </ChartPanel>
+            );
+          })}
+        </div>
+      )}
 
       {charts.length === 0 && (
         <ChartPanel title="Query Results">

@@ -114,6 +114,10 @@ function SqlBlock({ sql }: { sql: string }) {
   );
 }
 
+function hasStructuredResult(response?: QueryResponse) {
+  return Boolean(response && (response.sql || response.data.length || response.charts.length));
+}
+
 export default function Home() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [tables, setTables] = useState<TableSummary[]>([]);
@@ -321,7 +325,8 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5">
             {error && (
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
                 {error}
@@ -340,59 +345,82 @@ export default function Home() {
               </div>
             )}
 
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {message.role === "assistant" && (
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-200">
-                    <Bot className="h-4 w-4" />
-                  </div>
-                )}
-                <div
-                  className={`max-w-[92%] rounded-lg border p-4 ${
-                    message.role === "user"
-                      ? "border-blue-400/30 bg-blue-500/15"
-                      : "border-white/10 bg-[#11151b]"
-                  }`}
+            {messages.map((message) => {
+              const structured = hasStructuredResult(message.response);
+
+              if (message.role === "assistant" && structured) {
+                return (
+                  <article key={message.id} className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-blue-200">
+                        <Bot className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                          <span>Assistant</span>
+                        </div>
+                        <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.content}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[24px] border border-white/10 bg-[#161514] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:p-6">
+                      <ChartRenderer response={message.response!} />
+
+                      <details className="mt-5 rounded-2xl border border-white/8 bg-black/20">
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-300">
+                          View SQL and data
+                        </summary>
+                        <div className="space-y-4 border-t border-white/8 px-4 py-4">
+                          <SqlBlock sql={message.response!.sql} />
+                          <DataGrid rows={message.response!.data} />
+                        </div>
+                      </details>
+                    </div>
+                  </article>
+                );
+              }
+
+              return (
+                <article
+                  key={message.id}
+                  className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                    {message.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-                    {message.role}
+                  {message.role === "assistant" && (
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-200">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[92%] rounded-2xl border p-4 ${
+                      message.role === "user"
+                        ? "border-blue-400/30 bg-blue-500/15"
+                        : "border-white/10 bg-[#11151b]"
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      {message.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+                      {message.role}
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{message.content}</p>
+
+                    {message.loading && (
+                      <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Thinking
+                      </div>
+                    )}
+
+                    {message.error && (
+                      <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                        {message.error}
+                      </div>
+                    )}
                   </div>
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{message.content}</p>
-
-                  {message.loading && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Thinking
-                    </div>
-                  )}
-
-                  {message.error && (
-                    <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                      {message.error}
-                    </div>
-                  )}
-
-                  {message.response &&
-                    !message.response.error &&
-                    Boolean(
-                      message.response.sql ||
-                        message.response.data.length ||
-                        message.response.charts.length,
-                    ) && (
-                    <div className="mt-4 space-y-4">
-                      <ChartRenderer response={message.response} />
-                      <SqlBlock sql={message.response.sql} />
-                      <DataGrid rows={message.response.data} />
-                    </div>
-                  )}
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
             <div ref={bottomRef} />
+            </div>
           </div>
 
           <form onSubmit={submitQuery} className="border-t border-white/10 bg-[#0f1318] p-4">

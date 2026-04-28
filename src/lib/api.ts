@@ -6,7 +6,7 @@ import type {
   TableSummary,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://45.79.124.28.sslip.io";
 
 async function readError(res: Response): Promise<string> {
   try {
@@ -17,8 +17,16 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${API_BASE}${input}`, init);
+  } catch {
+    throw new Error(`Could not reach the API at ${API_BASE}. Check NEXT_PUBLIC_API_URL and redeploy.`);
+  }
+}
+
 export async function queryDashboard(query: string): Promise<QueryResponse> {
-  const res = await fetch(`${API_BASE}/query`, {
+  const res = await apiFetch("/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
@@ -32,7 +40,7 @@ export async function queryDashboard(query: string): Promise<QueryResponse> {
 }
 
 export async function checkHealth(): Promise<HealthResponse> {
-  const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+  const res = await apiFetch("/health", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Health check failed: ${res.status}`);
   }
@@ -40,7 +48,7 @@ export async function checkHealth(): Promise<HealthResponse> {
 }
 
 export async function getSchema(): Promise<Record<string, unknown>> {
-  const res = await fetch(`${API_BASE}/schema`, { cache: "no-store" });
+  const res = await apiFetch("/schema", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Schema request failed: ${res.status}`);
   }
@@ -48,7 +56,7 @@ export async function getSchema(): Promise<Record<string, unknown>> {
 }
 
 export async function getTables(): Promise<TableSummary[]> {
-  const res = await fetch(`${API_BASE}/tables`, { cache: "no-store" });
+  const res = await apiFetch("/tables", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Tables request failed: ${res.status}`);
   }
@@ -56,7 +64,7 @@ export async function getTables(): Promise<TableSummary[]> {
 }
 
 export async function getTablePreview(table: string, limit = 25): Promise<TablePreview> {
-  const res = await fetch(`${API_BASE}/tables/${encodeURIComponent(table)}/preview?limit=${limit}`, {
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/preview?limit=${limit}`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -66,7 +74,7 @@ export async function getTablePreview(table: string, limit = 25): Promise<TableP
 }
 
 export async function getKnowledge(): Promise<KnowledgeDocument[]> {
-  const res = await fetch(`${API_BASE}/knowledge`, { cache: "no-store" });
+  const res = await apiFetch("/knowledge", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Knowledge request failed: ${res.status}`);
   }
@@ -74,7 +82,7 @@ export async function getKnowledge(): Promise<KnowledgeDocument[]> {
 }
 
 export async function trainKnowledge(title: string, content: string): Promise<KnowledgeDocument> {
-  const res = await fetch(`${API_BASE}/knowledge`, {
+  const res = await apiFetch("/knowledge", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content }),
@@ -86,7 +94,7 @@ export async function trainKnowledge(title: string, content: string): Promise<Kn
 }
 
 export async function deleteKnowledge(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/knowledge/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/knowledge/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!res.ok) {
