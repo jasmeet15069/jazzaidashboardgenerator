@@ -6,7 +6,23 @@ import type {
   TableSummary,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://45.79.124.28.sslip.io";
+function normalizeApiBase(value?: string): string {
+  const fallback = "https://45.79.124.28.sslip.io";
+
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  const withoutLeadingSlashes = trimmed.replace(/^[\\/]+/, "");
+  const normalized = withoutLeadingSlashes.startsWith("http")
+    ? withoutLeadingSlashes
+    : `https://${withoutLeadingSlashes}`;
+
+  return normalized.replace(/\/+$/, "");
+}
+
+const API_BASE = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
 
 async function readError(res: Response): Promise<string> {
   try {
