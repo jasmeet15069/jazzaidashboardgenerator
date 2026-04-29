@@ -2,6 +2,8 @@ import type {
   HealthResponse,
   KnowledgeDocument,
   QueryResponse,
+  RowMutationResponse,
+  TableDropResponse,
   TablePreview,
   TableSummary,
 } from "@/types";
@@ -26,10 +28,14 @@ const API_BASE = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
 
 async function readError(res: Response): Promise<string> {
   try {
-    const body = await res.json();
+    const body = await res.clone().json();
     return body.detail || body.error || JSON.stringify(body);
   } catch {
-    return res.text();
+    try {
+      return await res.clone().text();
+    } catch {
+      return `Request failed with status ${res.status}`;
+    }
   }
 }
 
@@ -85,6 +91,59 @@ export async function getTablePreview(table: string, limit = 25): Promise<TableP
   });
   if (!res.ok) {
     throw new Error(`Preview request failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function createTableRow(
+  table: string,
+  values: Record<string, unknown>,
+): Promise<RowMutationResponse> {
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/rows`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values }),
+  });
+  if (!res.ok) {
+    throw new Error(`Create failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function updateTableRow(
+  table: string,
+  rowId: string,
+  values: Record<string, unknown>,
+): Promise<RowMutationResponse> {
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(rowId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values }),
+  });
+  if (!res.ok) {
+    throw new Error(`Update failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function deleteTableRow(table: string, rowId: string): Promise<RowMutationResponse> {
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(rowId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(`Delete failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function dropTable(table: string, confirmName: string): Promise<TableDropResponse> {
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/drop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm_name: confirmName }),
+  });
+  if (!res.ok) {
+    throw new Error(`Drop table failed: ${await readError(res)}`);
   }
   return res.json();
 }

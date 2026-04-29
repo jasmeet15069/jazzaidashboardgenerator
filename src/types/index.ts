@@ -25,6 +25,8 @@ export interface ColumnInfo {
   name: string;
   type: string;
   nullable: boolean;
+  primary_key?: boolean;
+  autoincrement?: boolean;
 }
 
 export interface TableSummary {
@@ -38,6 +40,17 @@ export interface TablePreview {
   columns: ColumnInfo[];
   rows: Record<string, unknown>[];
   limit: number;
+}
+
+export interface RowMutationResponse {
+  table: string;
+  row: Record<string, unknown>;
+  deleted?: boolean;
+}
+
+export interface TableDropResponse {
+  table: string;
+  deleted: boolean;
 }
 
 export interface KnowledgeDocument {
