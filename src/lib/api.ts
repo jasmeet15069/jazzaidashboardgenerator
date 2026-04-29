@@ -4,6 +4,7 @@ import type {
   QueryResponse,
   RowMutationResponse,
   TableDropResponse,
+  TableImportResponse,
   TablePreview,
   TableSummary,
 } from "@/types";
@@ -144,6 +145,35 @@ export async function dropTable(table: string, confirmName: string): Promise<Tab
   });
   if (!res.ok) {
     throw new Error(`Drop table failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function importTableFile(table: string, file: File): Promise<TableImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await apiFetch(`/tables/${encodeURIComponent(table)}/import`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(`Import failed: ${await readError(res)}`);
+  }
+  return res.json();
+}
+
+export async function importNewTableFile(tableName: string, file: File): Promise<TableImportResponse> {
+  const formData = new FormData();
+  formData.append("table_name", tableName);
+  formData.append("file", file);
+
+  const res = await apiFetch("/tables/import-new", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(`Import failed: ${await readError(res)}`);
   }
   return res.json();
 }

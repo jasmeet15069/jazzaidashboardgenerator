@@ -11,8 +11,10 @@
   "dependencies": {
     "lucide-react": "latest",
     "next": "latest",
+    "plotly.js-dist-min": "^3.5.0",
     "react": "latest",
     "react-dom": "latest",
+    "react-plotly.js": "^2.6.0",
     "recharts": "latest"
   },
   "devDependencies": {
@@ -20,6 +22,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/react-plotly.js": "^2.6.4",
     "tailwindcss": "latest",
     "typescript": "latest"
   }

@@ -31,6 +31,8 @@ import {
   getKnowledge,
   getTablePreview,
   getTables,
+  importNewTableFile,
+  importTableFile,
   queryDashboard,
   trainKnowledge,
   updateTableRow,
@@ -53,6 +55,7 @@ interface ChatMessage {
 }
 
 type WorkspaceTab = "tables" | "knowledge" | "viewer";
+type ImportMode = "append" | "create";
 
 const EMPTY_COLUMNS: TableSummary["columns"] = [];
 
@@ -190,6 +193,35 @@ function formatDate(value?: string) {
   return date.toLocaleString();
 }
 
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
+function summarizeContextUsage({
+  tables,
+  knowledge,
+  messages,
+  query,
+}: {
+  tables: TableSummary[];
+  knowledge: KnowledgeDocument[];
+  messages: ChatMessage[];
+  query: string;
+}) {
+  const schemaText = JSON.stringify(
+    tables.map((table) => ({
+      name: table.name,
+      columns: table.columns.map((column) => `${column.name}:${column.type}`),
+    })),
+  );
+  const knowledgeText = knowledge.map((doc) => `${doc.title} ${doc.preview}`).join(" ");
+  const messageText = messages.map((message) => `${message.role}:${message.content}`).join(" ");
+  const used = estimateTokens([schemaText, knowledgeText, messageText, query].join(" "));
+  const capacity = 258_000;
+  const fullness = Math.min(100, Math.round((used / capacity) * 100));
+  return { used, capacity, fullness };
+}
+
 function getPrimaryKeyColumn(columns: TableSummary["columns"]) {
   return columns.find((column) => column.primary_key) ?? null;
 }
@@ -215,6 +247,10 @@ export default function HomeClient() {
   const [crudMessage, setCrudMessage] = useState<string | null>(null);
   const [dropConfirmName, setDropConfirmName] = useState("");
   const [dropLoading, setDropLoading] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("append");
+  const [newTableName, setNewTableName] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("tables");
@@ -334,6 +370,40 @@ export default function HomeClient() {
       setError(err instanceof Error ? err.message : "Drop table failed");
     } finally {
       setDropLoading(false);
+    }
+  }
+
+  async function handleTableImport() {
+    const trimmedTableName = newTableName.trim();
+    if (!importFile) return;
+    if (importMode === "append" && !selectedTable) return;
+    if (importMode === "create" && !trimmedTableName) return;
+
+    setImportLoading(true);
+    setError(null);
+    setCrudMessage(null);
+    try {
+      const result =
+        importMode === "create"
+          ? await importNewTableFile(trimmedTableName, importFile)
+          : await importTableFile(selectedTable, importFile);
+
+      setCrudMessage(
+        result.created
+          ? `${result.table} created with ${result.inserted_count} imported rows.`
+          : `${result.inserted_count} rows imported into ${result.table}.`,
+      );
+      setImportFile(null);
+      setNewTableName("");
+      await refreshWorkspace();
+      setSelectedTable(result.table);
+      setSelectedRowId(null);
+      await loadPreview(result.table);
+      setWorkspaceTab("viewer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImportLoading(false);
     }
   }
 
@@ -500,6 +570,7 @@ export default function HomeClient() {
       table.columns.some((column) => column.name.toLowerCase().includes(needle))
     );
   });
+  const contextWindow = summarizeContextUsage({ tables, knowledge, messages, query });
 
   return (
     <main className="min-h-screen bg-[#0b0d10] text-white">
@@ -553,6 +624,16 @@ export default function HomeClient() {
                 <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">
                   <FileText className="h-3.5 w-3.5 text-blue-300" />
                   <span>{knowledge.length} knowledge docs</span>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                    <span>Context window</span>
+                    <span className="text-slate-500">{contextWindow.fullness}% full</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    {contextWindow.used.toLocaleString()} / {contextWindow.capacity.toLocaleString()} tokens used
+                  </div>
                 </div>
               </div>
 
@@ -630,6 +711,66 @@ export default function HomeClient() {
                             </div>
                           )}
                         </div>
+
+                        {message.response?.analysis && (
+                          <div className="mb-5 rounded-2xl border border-white/8 bg-black/20 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Thinking Layer</p>
+                                <p className="mt-1 text-sm text-slate-300">
+                                  Intent: <span className="text-white">{message.response.analysis.intent}</span>
+                                </p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">
+                                confidence {Math.round((message.response.analysis.confidence || 0) * 100)}%
+                              </div>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Table focus</p>
+                                <p className="mt-2 text-sm text-slate-200">
+                                  {message.response.analysis.selected_table || "Not narrowed yet"}
+                                </p>
+                                {!!message.response.analysis.table_candidates?.length && (
+                                  <p className="mt-2 text-xs text-slate-500">
+                                    candidates: {message.response.analysis.table_candidates.join(", ")}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Visualization</p>
+                                <p className="mt-2 text-sm text-slate-200">
+                                  {message.response.analysis.visualization_strategy}
+                                </p>
+                                <p className="mt-2 text-xs text-slate-500">
+                                  knowledge context: {message.response.analysis.knowledge_used ? "used" : "not used"}
+                                </p>
+                              </div>
+                              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Metric candidates</p>
+                                <p className="mt-2 text-sm text-slate-200">
+                                  {message.response.analysis.metric_candidates?.length
+                                    ? message.response.analysis.metric_candidates.join(", ")
+                                    : "No strong numeric match"}
+                                </p>
+                              </div>
+                              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dimension context</p>
+                                <p className="mt-2 text-sm text-slate-200">
+                                  {message.response.analysis.dimension_candidates?.length
+                                    ? message.response.analysis.dimension_candidates.join(", ")
+                                    : "No strong category match"}
+                                </p>
+                                {!!message.response.analysis.time_candidates?.length && (
+                                  <p className="mt-2 text-xs text-slate-500">
+                                    time: {message.response.analysis.time_candidates.join(", ")}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         <ChartRenderer response={message.response!} />
 
                         <details className="mt-5 rounded-2xl border border-white/8 bg-black/20">
@@ -839,6 +980,92 @@ export default function HomeClient() {
                           </div>
                         )}
                       </div>
+                    </div>
+
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Import Data</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Append rows into a selected table or create a brand new SQL table from CSV/XLSX.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-[#0b0d10] p-1">
+                        {[
+                          { key: "append", label: "Append rows" },
+                          { key: "create", label: "Create table" },
+                        ].map((option) => {
+                          const active = importMode === option.key;
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => setImportMode(option.key as ImportMode)}
+                              className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-xs font-medium transition ${
+                                active ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-white/[0.05]"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {importMode === "append" ? (
+                        <p className="mt-3 text-xs leading-5 text-slate-500">
+                          {selectedTable ? (
+                            <>
+                              Upload rows into <span className="font-semibold text-slate-300">{selectedTable}</span>.
+                            </>
+                          ) : (
+                            "Select a table above before importing rows."
+                          )}
+                        </p>
+                      ) : (
+                        <>
+                          <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-400">New Table Name</label>
+                          <input
+                            value={newTableName}
+                            onChange={(event) => setNewTableName(event.target.value)}
+                            className="mt-2 h-10 w-full rounded-lg border border-white/10 bg-[#0b0d10] px-3 text-sm text-slate-100 outline-none focus:border-blue-400/50"
+                            placeholder="for example sales_q1_2026"
+                          />
+                          <p className="mt-2 text-xs leading-5 text-slate-500">
+                            We will infer columns from the uploaded file and create a new SQL table automatically.
+                          </p>
+                        </>
+                      )}
+
+                      <label className="mt-3 inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#0b0d10] px-3 text-sm text-slate-200 transition hover:border-white/20">
+                        <Upload className="h-3.5 w-3.5" />
+                        {importFile ? importFile.name : "Choose CSV or XLSX"}
+                        <input
+                          type="file"
+                          accept=".csv,.txt,.xlsx,.xlsm"
+                          className="hidden"
+                          onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleTableImport()}
+                        disabled={
+                          importLoading ||
+                          !importFile ||
+                          (importMode === "append" ? !selectedTable : !newTableName.trim())
+                        }
+                        className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-blue-500 px-3 text-sm font-medium text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      >
+                        {importLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : importMode === "create" ? (
+                          "Create table from file"
+                        ) : (
+                          "Import file"
+                        )}
+                      </button>
                     </div>
 
                     {selectedTable && (

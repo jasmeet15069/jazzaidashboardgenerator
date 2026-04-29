@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import dynamic from "next/dynamic";
 import {
   Area,
   AreaChart,
@@ -20,6 +21,8 @@ import {
   YAxis,
 } from "recharts";
 import type { ChartConfig, QueryResponse } from "@/types";
+
+const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 const COLORS = [
   "#ef4444",
@@ -59,6 +62,13 @@ function formatTick(value: unknown): string {
   }
   const text = String(value);
   return text.length > 12 ? `${text.slice(0, 12)}...` : text;
+}
+
+function toPlotDatum(value: unknown): string | number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" || typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return String(value);
 }
 
 function CustomTooltip({
@@ -115,6 +125,7 @@ function getKeys(data: Record<string, unknown>[], config: ChartConfig) {
   return {
     xKey: config.x || keys[0] || "x",
     yKey: config.y || keys[1] || "y",
+    zKey: config.z || keys[2] || "z",
   };
 }
 
@@ -335,6 +346,185 @@ function ScatterChartComponent({ data, config }: { data: Record<string, unknown>
   );
 }
 
+function PlotlyChart({
+  data,
+  config,
+}: {
+  data: Record<string, unknown>[];
+  config: ChartConfig;
+}) {
+  const { xKey, yKey, zKey } = getKeys(data, config);
+  const title = config.title;
+  const commonLayout = {
+    paper_bgcolor: "#22201d",
+    plot_bgcolor: "#22201d",
+    font: { color: "#e2e8f0" },
+    margin: { l: 48, r: 24, t: 24, b: 48 },
+    autosize: true,
+  };
+
+  if (config.type === "bubble") {
+    return (
+      <Plot
+        data={[
+          {
+            type: "scatter",
+            mode: "markers",
+            x: data.map((row) => toPlotDatum(row[xKey])),
+            y: data.map((row) => toPlotDatum(row[yKey])),
+            text: data.map((row) => String(row[config.color_field || xKey] ?? "")),
+            marker: {
+              size: data.map((row) => Number(row[config.size_field || yKey] || 12)),
+              sizemode: "area",
+              sizeref: 2.0 * Math.max(...data.map((row) => Number(row[config.size_field || yKey] || 1))) / 40 ** 2,
+              color: COLORS[1],
+              opacity: 0.75,
+            },
+          },
+        ]}
+        layout={commonLayout}
+        style={{ width: "100%", height: 340 }}
+        config={{ displayModeBar: false, responsive: true }}
+      />
+    );
+  }
+
+  if (config.type === "heatmap") {
+    const xValues = Array.from(new Set(data.map((row) => String(row[xKey] ?? ""))));
+    const yValues = Array.from(new Set(data.map((row) => String(row[yKey] ?? ""))));
+    const zMatrix = yValues.map((yValue) =>
+      xValues.map((xValue) => {
+        const match = data.find(
+          (row) => String(row[xKey] ?? "") === xValue && String(row[yKey] ?? "") === yValue,
+        );
+        return Number(match?.[zKey] || 0);
+      }),
+    );
+    return (
+      <Plot
+        data={[
+          {
+            type: "heatmap",
+            x: xValues,
+            y: yValues,
+            z: zMatrix,
+            colorscale: "Viridis",
+          },
+        ]}
+        layout={commonLayout}
+        style={{ width: "100%", height: 360 }}
+        config={{ displayModeBar: false, responsive: true }}
+      />
+    );
+  }
+
+  if (config.type === "treemap") {
+    return (
+      <Plot
+        data={[
+          {
+            type: "treemap",
+            labels: data.map((row) => String(row[xKey] ?? "")),
+            parents: data.map(() => ""),
+            values: data.map((row) => Number(row[yKey] || 0)),
+            textinfo: "label+value",
+          },
+        ]}
+        layout={commonLayout}
+        style={{ width: "100%", height: 360 }}
+        config={{ displayModeBar: false, responsive: true }}
+      />
+    );
+  }
+
+  if (config.type === "scatter3d") {
+    return (
+      <Plot
+        data={[
+          {
+            type: "scatter3d",
+            mode: "markers",
+            x: data.map((row) => Number(row[xKey] || 0)),
+            y: data.map((row) => Number(row[yKey] || 0)),
+            z: data.map((row) => Number(row[zKey] || 0)),
+            text: data.map((row) => String(row[config.color_field || xKey] ?? "")),
+            marker: {
+              size: data.map((row) => Number(row[config.size_field || zKey] || 5)),
+              color: data.map((_, index) => index),
+              colorscale: "Plasma",
+              opacity: 0.8,
+            },
+          },
+        ]}
+        layout={{
+          ...commonLayout,
+          scene: {
+            xaxis: { title: { text: xKey }, color: "#94a3b8" },
+            yaxis: { title: { text: yKey }, color: "#94a3b8" },
+            zaxis: { title: { text: zKey }, color: "#94a3b8" },
+            bgcolor: "#22201d",
+          },
+        }}
+        style={{ width: "100%", height: 420 }}
+        config={{ displayModeBar: false, responsive: true }}
+      />
+    );
+  }
+
+  if (config.type === "surface3d") {
+    const xValues = Array.from(new Set(data.map((row) => Number(row[xKey] || 0))));
+    const yValues = Array.from(new Set(data.map((row) => Number(row[yKey] || 0))));
+    const zMatrix = yValues.map((yValue) =>
+      xValues.map((xValue) => {
+        const match = data.find(
+          (row) => Number(row[xKey] || 0) === xValue && Number(row[yKey] || 0) === yValue,
+        );
+        return Number(match?.[zKey] || 0);
+      }),
+    );
+    return (
+      <Plot
+        data={[
+          {
+            type: "surface",
+            x: xValues,
+            y: yValues,
+            z: zMatrix,
+            colorscale: "Viridis",
+          },
+        ]}
+        layout={{
+          ...commonLayout,
+          scene: {
+            xaxis: { title: { text: xKey }, color: "#94a3b8" },
+            yaxis: { title: { text: yKey }, color: "#94a3b8" },
+            zaxis: { title: { text: zKey }, color: "#94a3b8" },
+            bgcolor: "#22201d",
+          },
+        }}
+        style={{ width: "100%", height: 420 }}
+        config={{ displayModeBar: false, responsive: true }}
+      />
+    );
+  }
+
+  return null;
+}
+
+function renderChart(data: Record<string, unknown>[], config: ChartConfig, key?: string | number) {
+  const nodeKey = key ?? config.title;
+  if (config.type === "line") return <LineChartComponent key={nodeKey} data={data} config={config} />;
+  if (config.type === "area") return <LineChartComponent key={nodeKey} data={data} config={config} isArea />;
+  if (config.type === "bar") return <BarChartComponent key={nodeKey} data={data} config={config} />;
+  if (config.type === "pie") return <PieChartComponent key={nodeKey} data={data} config={config} />;
+  if (config.type === "donut") return <PieChartComponent key={nodeKey} data={data} config={config} isDonut />;
+  if (config.type === "scatter") return <ScatterChartComponent key={nodeKey} data={data} config={config} />;
+  if (["bubble", "heatmap", "treemap", "scatter3d", "surface3d"].includes(config.type)) {
+    return <PlotlyChart key={nodeKey} data={data} config={config} />;
+  }
+  return null;
+}
+
 function ChartPanel({
   title,
   description,
@@ -429,12 +619,7 @@ export default function ChartRenderer({ response }: { response: QueryResponse })
 
       {heroChart && (
         <ChartPanel title={heroChart.title} description={heroChart.description}>
-          {heroChart.type === "line" && <LineChartComponent data={data} config={heroChart} />}
-          {heroChart.type === "area" && <LineChartComponent data={data} config={heroChart} isArea />}
-          {heroChart.type === "bar" && <BarChartComponent data={data} config={heroChart} />}
-          {heroChart.type === "pie" && <PieChartComponent data={data} config={heroChart} />}
-          {heroChart.type === "donut" && <PieChartComponent data={data} config={heroChart} isDonut />}
-          {heroChart.type === "scatter" && <ScatterChartComponent data={data} config={heroChart} />}
+          {renderChart(data, heroChart)}
         </ChartPanel>
       )}
 
@@ -443,12 +628,7 @@ export default function ChartRenderer({ response }: { response: QueryResponse })
           {secondaryCharts.map((config, index) => {
             return (
               <ChartPanel key={index} title={config.title} description={config.description}>
-                {config.type === "line" && <LineChartComponent data={data} config={config} />}
-                {config.type === "area" && <LineChartComponent data={data} config={config} isArea />}
-                {config.type === "bar" && <BarChartComponent data={data} config={config} />}
-                {config.type === "pie" && <PieChartComponent data={data} config={config} />}
-                {config.type === "donut" && <PieChartComponent data={data} config={config} isDonut />}
-                {config.type === "scatter" && <ScatterChartComponent data={data} config={config} />}
+                {renderChart(data, config, index)}
               </ChartPanel>
             );
           })}

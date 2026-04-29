@@ -1,9 +1,23 @@
 export interface ChartConfig {
-  type: "line" | "bar" | "pie" | "donut" | "kpi" | "area" | "scatter";
+  type:
+    | "line"
+    | "bar"
+    | "pie"
+    | "donut"
+    | "kpi"
+    | "area"
+    | "scatter"
+    | "bubble"
+    | "heatmap"
+    | "treemap"
+    | "scatter3d"
+    | "surface3d";
   title: string;
   description?: string;
   x: string;
   y: string;
+  z?: string;
+  size_field?: string;
   color_field?: string;
 }
 
@@ -12,6 +26,17 @@ export interface QueryResponse {
   data: Record<string, unknown>[];
   charts: ChartConfig[];
   summary: string;
+  analysis?: {
+    intent: string;
+    selected_table: string;
+    table_candidates: string[];
+    metric_candidates: string[];
+    dimension_candidates: string[];
+    time_candidates: string[];
+    visualization_strategy: string;
+    confidence: number;
+    knowledge_used: boolean;
+  } | null;
   error?: string | null;
 }
 
@@ -51,6 +76,13 @@ export interface RowMutationResponse {
 export interface TableDropResponse {
   table: string;
   deleted: boolean;
+}
+
+export interface TableImportResponse {
+  table: string;
+  inserted_count: number;
+  columns: string[];
+  created?: boolean;
 }
 
 export interface KnowledgeDocument {
